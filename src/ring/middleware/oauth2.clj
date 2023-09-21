@@ -36,10 +36,10 @@
 
 (defn- authorize-params [profile request state verifier]
   (-> {:response_type "code"
-       :client_id (:client-id profile)
-       :redirect_uri (redirect-uri profile request)
-       :scope (scopes profile)
-       :state state}
+       :client_id     (:client-id profile)
+       :redirect_uri  (redirect-uri profile request)
+       :scope         (scopes profile)
+       :state         state}
       (cond-> (:pkce? profile)
         (assoc :code_challenge (verifier->challenge verifier)
                :code_challenge_method "S256"))))
@@ -57,7 +57,7 @@
 
 (defn- make-launch-handler [{:keys [pkce?] :as profile}]
   (fn [{:keys [session] :or {session {}} :as request}]
-    (let [state (random-state)
+    (let [state    (random-state)
           verifier (when pkce? (random-code-verifier))
           session' (-> session
                        (assoc ::access-tokens {})
@@ -97,8 +97,8 @@
   (get-in request [:session ::code-verifier]))
 
 (defn- request-params [{:keys [pkce?] :as profile} request]
-  (-> {:grant_type "authorization_code"
-       :code (get-authorization-code request)
+  (-> {:grant_type   "authorization_code"
+       :code         (get-authorization-code request)
        :redirect_uri (redirect-uri profile request)}
       (cond-> pkce? (assoc :code_verifier (get-code-verifier request)))))
 
@@ -107,7 +107,7 @@
 
 (defn- add-form-credentials [opts id secret]
   (assoc opts :form-params (-> (:form-params opts)
-                               (merge {:client_id id
+                               (merge {:client_id     id
                                        :client_secret secret}))))
 
 (defn- get-access-token
@@ -129,9 +129,9 @@
 (defn- make-redirect-handler [{:keys [id landing-uri] :as profile}]
   (let [state-mismatch-handler (:state-mismatch-handler
                                 profile state-mismatch-handler)
-        no-auth-code-handler (:no-auth-code-handler
-                              profile no-auth-code-handler)]
-    (fn redir-handler [{:keys [session] :or {session {}} :as request}]
+        no-auth-code-handler   (:no-auth-code-handler
+                                profile no-auth-code-handler)]
+    (fn [{:keys [session] :or {session {}} :as request}]
       (cond
         (not (state-matches? request))
         (state-mismatch-handler request)
@@ -160,8 +160,8 @@
 (defn wrap-oauth2 [handler profiles]
   {:pre [(every? valid-profile? (vals profiles))]}
   (let [profile-list (for [[k v] profiles] (assoc v :id k))
-        launches (into {} (map (juxt :launch-uri identity)) profile-list)
-        redirects (into {} (map (juxt parse-redirect-url identity)) profile-list)]
+        launches     (into {} (map (juxt :launch-uri identity)) profile-list)
+        redirects    (into {} (map (juxt parse-redirect-url identity)) profile-list)]
     (fn [{:keys [uri session] :as request}]
       (if-let [profile-for-launch (launches uri)]
         ((make-launch-handler profile-for-launch) request)
