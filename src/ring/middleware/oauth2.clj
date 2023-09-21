@@ -60,7 +60,7 @@
     (let [state    (random-state)
           verifier (when pkce? (random-code-verifier))
           session' (-> session
-                       (assoc ::access-tokens {})
+                       (dissoc ::access-tokens)
                        (assoc ::state state)
                        (assoc ::profile-id (:id profile))
                        (cond-> pkce? (assoc ::code-verifier verifier)))]

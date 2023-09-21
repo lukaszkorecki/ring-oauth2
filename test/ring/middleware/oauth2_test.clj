@@ -11,7 +11,8 @@
            [java.util Date]))
 
 (def test-profile
-  {:authorize-uri    "https://example.com/oauth2/authorize"
+  {:id :test
+   :authorize-uri    "https://example.com/oauth2/authorize"
    :access-token-uri "https://example.com/oauth2/access-token"
    :redirect-uri     "/oauth2/test/callback"
    :launch-uri       "/oauth2/test"
@@ -45,7 +46,8 @@
             "scope"         "user project"}
            (dissoc params "state")))
     (is (re-matches #"[A-Za-z0-9_-]{12}" (params "state")))
-    (is (= {::oauth2/state (params "state")}
+    (is (= {::oauth2/state      (params "state")
+            ::oauth2/profile-id :test}
            (:session response)))))
 
 (deftest test-launch-uri-pkce
@@ -111,7 +113,7 @@
 
     (testing "invalid state"
       (let [request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxya"}))
             response (test-handler request)]
@@ -124,7 +126,7 @@
                             :state-mismatch-handler (constantly error))
             handler  (wrap-oauth2 token-handler {:test profile})
             request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxya"}))
             response (handler request)]
@@ -133,7 +135,7 @@
 
     (testing "no authorization code"
       (let [request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"state" "xyzxyz"}))
             response (test-handler request)]
         (is (= {:status 400, :headers {}, :body "No authorization code"}
@@ -145,7 +147,7 @@
                             :no-auth-code-handler (constantly error))
             handler  (wrap-oauth2 token-handler {:test profile})
             request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"state" "xyzxyz"}))
             response (handler request)]
         (is (= {:status 400, :headers {}, :body "Error!"}
@@ -157,7 +159,7 @@
                             "https://example.com/oauth2/test/callback?query")
             handler  (wrap-oauth2 token-handler {:test profile})
             request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (handler request)
@@ -191,7 +193,7 @@
       (let [profile  (assoc test-profile :basic-auth? true)
             handler  (wrap-oauth2 token-handler {:test profile})
             request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (handler request)]
@@ -212,7 +214,7 @@
       (let [profile  (assoc test-profile :basic-auth? false)
             handler  (wrap-oauth2 token-handler {:test profile})
             request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (handler request)]
@@ -230,7 +232,7 @@
 
     (testing "valid state"
       (let [request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (test-handler request)
@@ -263,7 +265,7 @@
 
     (testing "valid state"
       (let [request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (test-handler request)
@@ -293,7 +295,8 @@
     (testing "verifier in extra data"
       (let [request  (-> (mock/request :get "/oauth2/test/callback")
                          (assoc :session {::oauth2/state "xyzxyz"
-                                          ::oauth2/code-verifier "jkljkl"})
+                                          ::oauth2/code-verifier "jkljkl"
+                                          ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (test-handler-pkce request)]
@@ -310,7 +313,7 @@
                         :redirect-handler redirect-handler)
         handler  (wrap-oauth2 token-handler {:test profile})
         request  (-> (mock/request :get "/oauth2/test/callback")
-                     (assoc :session {::oauth2/state "xyzxyz"})
+                     (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                      (assoc :query-params {"code" "abcabc", "state" "xyzxyz"}))
         response (handler request)
         body     (:body response)]
