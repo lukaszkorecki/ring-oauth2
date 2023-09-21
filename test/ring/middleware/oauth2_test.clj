@@ -92,7 +92,7 @@
 
     (testing "valid state"
       (let [request  (-> (mock/request :get "/oauth2/test/callback")
-                         (assoc :session {::oauth2/state "xyzxyz"})
+                         (assoc :session {::oauth2/state "xyzxyz" ::oauth2/profile-id :test})
                          (assoc :query-params {"code"  "abcabc"
                                                "state" "xyzxyz"}))
             response (test-handler request)

@@ -7,14 +7,15 @@
             [ring.util.response :as resp])
   (:import [java.time Instant]
            [java.util Date]
+           [java.net URI]
            [java.security MessageDigest]
            [java.nio.charset StandardCharsets]
            [org.apache.commons.codec.binary Base64]))
 
 (defn- redirect-uri [profile request]
   (-> (req/request-url request)
-      (java.net.URI/create)
-      (.resolve (:redirect-uri profile))
+      (URI/create)
+      (.resolve ^String (:redirect-uri profile))
       str))
 
 (defn- scopes [profile]
@@ -35,13 +36,13 @@
 
 (defn- authorize-params [profile request state verifier]
   (-> {:response_type "code"
-       :client_id     (:client-id profile)
-       :redirect_uri  (redirect-uri profile request)
-       :scope         (scopes profile)
-       :state         state}
+       :client_id (:client-id profile)
+       :redirect_uri (redirect-uri profile request)
+       :scope (scopes profile)
+       :state state}
       (cond-> (:pkce? profile)
-              (assoc :code_challenge (verifier->challenge verifier)
-                     :code_challenge_method "S256"))))
+        (assoc :code_challenge (verifier->challenge verifier)
+               :code_challenge_method "S256"))))
 
 (defn- authorize-uri [profile request state verifier]
   (str (:authorize-uri profile)
@@ -56,10 +57,12 @@
 
 (defn- make-launch-handler [{:keys [pkce?] :as profile}]
   (fn [{:keys [session] :or {session {}} :as request}]
-    (let [state    (random-state)
+    (let [state (random-state)
           verifier (when pkce? (random-code-verifier))
           session' (-> session
+                       (assoc ::access-tokens {})
                        (assoc ::state state)
+                       (assoc ::profile-id (:id profile))
                        (cond-> pkce? (assoc ::code-verifier verifier)))]
       (-> (resp/redirect (authorize-uri profile request state verifier))
           (assoc :session session')))))
@@ -94,9 +97,9 @@
   (get-in request [:session ::code-verifier]))
 
 (defn- request-params [{:keys [pkce?] :as profile} request]
-  (-> {:grant_type    "authorization_code"
-       :code          (get-authorization-code request)
-       :redirect_uri  (redirect-uri profile request)}
+  (-> {:grant_type "authorization_code"
+       :code (get-authorization-code request)
+       :redirect_uri (redirect-uri profile request)}
       (cond-> pkce? (assoc :code_verifier (get-code-verifier request)))))
 
 (defn- add-header-credentials [opts id secret]
@@ -104,18 +107,18 @@
 
 (defn- add-form-credentials [opts id secret]
   (assoc opts :form-params (-> (:form-params opts)
-                               (merge {:client_id     id
+                               (merge {:client_id id
                                        :client_secret secret}))))
 
 (defn- get-access-token
-  [{:keys [access-token-uri client-id client-secret basic-auth?]
+  [{:keys [access-token-uri client-id client-secret basic-auth? id]
     :or {basic-auth? false} :as profile} request]
   (format-access-token
    (http/post access-token-uri
-     (cond-> {:accept :json, :as  :json,
-              :form-params (request-params profile request)}
-       basic-auth? (add-header-credentials client-id client-secret)
-       (not basic-auth?) (add-form-credentials client-id client-secret)))))
+              (cond-> {:accept :json, :as :json,
+                       :form-params (request-params profile request)}
+                basic-auth? (add-header-credentials client-id client-secret)
+                (not basic-auth?) (add-form-credentials client-id client-secret)))))
 
 (defn state-mismatch-handler [_]
   {:status 400, :headers {}, :body "State mismatch"})
@@ -125,10 +128,10 @@
 
 (defn- make-redirect-handler [{:keys [id landing-uri] :as profile}]
   (let [state-mismatch-handler (:state-mismatch-handler
-                                 profile state-mismatch-handler)
-        no-auth-code-handler   (:no-auth-code-handler
-                                 profile no-auth-code-handler)]
-    (fn [{:keys [session] :or {session {}} :as request}]
+                                profile state-mismatch-handler)
+        no-auth-code-handler (:no-auth-code-handler
+                              profile no-auth-code-handler)]
+    (fn redir-handler [{:keys [session] :or {session {}} :as request}]
       (cond
         (not (state-matches? request))
         (state-mismatch-handler request)
@@ -149,19 +152,23 @@
     request))
 
 (defn- parse-redirect-url [{:keys [redirect-uri]}]
-  (.getPath (java.net.URI. redirect-uri)))
+  (.getPath ^URI (URI. ^String redirect-uri)))
 
 (defn- valid-profile? [{:keys [client-id client-secret] :as profile}]
   (and (some? client-id) (some? client-secret)))
 
 (defn wrap-oauth2 [handler profiles]
   {:pre [(every? valid-profile? (vals profiles))]}
-  (let [profiles  (for [[k v] profiles] (assoc v :id k))
-        launches  (into {} (map (juxt :launch-uri identity)) profiles)
-        redirects (into {} (map (juxt parse-redirect-url identity)) profiles)]
-    (fn [{:keys [uri] :as request}]
-      (if-let [profile (launches uri)]
-        ((make-launch-handler profile) request)
-        (if-let [profile (redirects uri)]
+  (let [profile-list (for [[k v] profiles] (assoc v :id k))
+        launches (into {} (map (juxt :launch-uri identity)) profile-list)
+        redirects (into {} (map (juxt parse-redirect-url identity)) profile-list)]
+    (fn [{:keys [uri session] :as request}]
+      (if-let [profile-for-launch (launches uri)]
+        ((make-launch-handler profile-for-launch) request)
+        (if-let [profile (when-let [profile-id (and
+                                                (redirects uri)
+                                                (::profile-id session))]
+                           ;; XXX: use a map? just need to refactor the top-level let to use better data structures
+                           (first (filter #(= (:id %) profile-id) profile-list)))]
           ((:redirect-handler profile (make-redirect-handler profile)) request)
           (handler (assoc-access-tokens request)))))))
